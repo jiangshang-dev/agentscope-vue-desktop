@@ -1,0 +1,43 @@
+{
+  "hash": "e90b8171",
+  "configHash": "a57cb336",
+  "lockfileHash": "a5d4e08a",
+  "browserHash": "b3b40fda",
+  "optimized": {
+    "ant-design-vue": {
+      "src": "../../../../node_modules/.pnpm/ant-design-vue@4.2.6_vue@3.5.41_typescript@5.9.3_/node_modules/ant-design-vue/es/index.js",
+      "file": "ant-design-vue.js",
+      "fileHash": "c9134ab1",
+      "needsInterop": false
+    },
+    "pinia": {
+      "src": "../../../../node_modules/.pnpm/pinia@3.0.4_typescript@5.9.3_vue@3.5.41_typescript@5.9.3_/node_modules/pinia/dist/pinia.mjs",
+      "file": "pinia.js",
+      "fileHash": "ab8fee8e",
+      "needsInterop": false
+    },
+    "vue": {
+      "src": "../../../../node_modules/.pnpm/vue@3.5.41_typescript@5.9.3/node_modules/vue/dist/vue.runtime.esm-bundler.js",
+      "file": "vue.js",
+      "fileHash": "833db81b",
+      "needsInterop": false
+    },
+    "ant-design-vue/es/locale/zh_CN": {
+      "src": "../../../../node_modules/.pnpm/ant-design-vue@4.2.6_vue@3.5.41_typescript@5.9.3_/node_modules/ant-design-vue/es/locale/zh_CN.js",
+      "file": "ant-design-vue_es_locale_zh_CN.js",
+      "fileHash": "2c6232d9",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-BYTPFQZA": {
+      "file": "chunk-BYTPFQZA.js"
+    },
+    "chunk-R6ANEUTM": {
+      "file": "chunk-R6ANEUTM.js"
+    },
+    "chunk-PX6F3LHL": {
+      "file": "chunk-PX6F3LHL.js"
+    }
+  }
+}

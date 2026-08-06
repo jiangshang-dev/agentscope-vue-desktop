@@ -1,0 +1,46 @@
+directories:
+  output: release
+  buildResources: build
+appId: com.agentscope.desktop
+productName: AgentOS
+copyright: Copyright © AgentOS
+files:
+  - filter:
+      - out/**/*
+      - package.json
+asar: true
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  hardenedRuntime: false
+  gatekeeperAssess: false
+dmg:
+  contents:
+    - x: 130
+      'y': 220
+    - x: 410
+      'y': 220
+      type: link
+      path: /Applications
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: AgentOS
+linux:
+  target:
+    - AppImage
+  category: Development
+electronVersion: 37.10.3

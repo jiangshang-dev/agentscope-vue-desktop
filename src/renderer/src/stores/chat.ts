@@ -288,6 +288,18 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function send(text: string): Promise<void> {
+    // 二次拦截：即使绕过 UI，未激活也不发 SSE（Electron 下 license store 已校验）
+    try {
+      const { useLicenseStore } = await import('./license')
+      const lic = useLicenseStore()
+      if (!lic.isActivated) {
+        errorText.value = '未激活：请先输入激活密钥'
+        return
+      }
+    } catch {
+      /* store 不可用时放行，由路由守卫兜底 */
+    }
+
     const trimmed = text.trim()
     const pendingAtts = [...attachments.value]
     // 允许「只有附件、没有文字」发送

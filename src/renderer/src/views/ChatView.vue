@@ -86,6 +86,9 @@
           <span class="status">
             {{ auth.online ? `API 已连接 · ${auth.health?.agent_mode || 'ok'}` : 'API 未连接' }}
           </span>
+          <a-tag v-if="license.isActivated" color="success" style="margin-inline-end: 0">
+            已激活{{ license.status.plan ? ` · ${license.status.plan}` : '' }}
+          </a-tag>
           <a-segmented
             v-model:value="chat.accessScope"
             class="scope-seg"
@@ -229,9 +232,11 @@ import { MenuOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons-vu
 import ChatBubble from '../components/ChatBubble.vue'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
+import { useLicenseStore } from '../stores/license'
 
 const auth = useAuthStore()
 const chat = useChatStore()
+const license = useLicenseStore()
 const router = useRouter()
 const draft = ref('')
 const scrollEl = ref<HTMLElement | null>(null)
@@ -259,7 +264,10 @@ const scopeOptions = computed(() =>
 )
 
 const canSend = computed(
-  () => !chat.busy && (Boolean(draft.value.trim()) || chat.attachments.length > 0),
+  () =>
+    license.isActivated &&
+    !chat.busy &&
+    (Boolean(draft.value.trim()) || chat.attachments.length > 0),
 )
 const hasSteps = computed(() => chat.steps.length > 0)
 const panelVisible = computed(() => stepsOpen.value && (hasSteps.value || chat.busy))
@@ -443,6 +451,11 @@ function onKeydown(e: KeyboardEvent): void {
 }
 
 async function onSend(): Promise<void> {
+  if (!license.isActivated) {
+    message.warning('请先激活软件后再对话')
+    router.replace({ name: 'activate' })
+    return
+  }
   const text = draft.value
   draft.value = ''
   await chat.send(text)

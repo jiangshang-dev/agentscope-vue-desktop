@@ -6,10 +6,24 @@
  */
 import { contextBridge, ipcRenderer } from 'electron'
 
+export type LicenseStatusDto = {
+  activated: boolean
+  plan: string
+  uid: string
+  exp: number | null
+  expLabel: string
+  machineId: string
+  message: string
+}
+
 const api = {
   selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectDirectory'),
   selectFiles: (): Promise<string[]> => ipcRenderer.invoke('dialog:selectFiles'),
   openPath: (targetPath: string): Promise<string> => ipcRenderer.invoke('shell:openPath', targetPath),
+  licenseStatus: (): Promise<LicenseStatusDto> => ipcRenderer.invoke('license:status'),
+  licenseActivate: (key: string): Promise<LicenseStatusDto> =>
+    ipcRenderer.invoke('license:activate', key),
+  licenseDeactivate: (): Promise<LicenseStatusDto> => ipcRenderer.invoke('license:deactivate'),
 }
 
 contextBridge.exposeInMainWorld('api', api)

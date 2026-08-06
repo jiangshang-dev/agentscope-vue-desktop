@@ -2,13 +2,18 @@
  * Electron 主进程入口。
  *
  * 职责：创建 BrowserWindow、加载渲染页（开发走 Vite URL，生产走打包 HTML）、
- * 注册 IPC 供 preload 桥接（选目录/选文件/用系统打开路径）。
+ * 注册 IPC 供 preload 桥接（选目录/选文件/用系统打开路径/激活密钥）。
  *
  * 协作：preload/index.ts 通过 ipcRenderer.invoke 调用本文件注册的 handler；
  * 渲染进程不直接访问 Node/Electron API。
  */
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
+import {
+  activateLicense,
+  deactivateLicense,
+  getLicenseStatus,
+} from './license'
 
 const isDev = !app.isPackaged
 
@@ -93,6 +98,11 @@ app.whenReady().then(() => {
     if (!targetPath) return 'empty'
     return shell.openPath(targetPath)
   })
+
+  // --- IPC：激活密钥（主进程校验，渲染层不可伪造签名） ---
+  ipcMain.handle('license:status', async () => getLicenseStatus())
+  ipcMain.handle('license:activate', async (_e, key: string) => activateLicense(String(key || '')))
+  ipcMain.handle('license:deactivate', async () => deactivateLicense())
 
   createWindow()
 

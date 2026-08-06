@@ -74,14 +74,21 @@ async function onSubmit(): Promise<void> {
   auth.updateApiBase(apiBase.value)
   await auth.login(username.value.trim(), password.value)
   message.success('登录成功')
-  router.replace({ name: 'chat' })
+  // 未激活则先去激活页，再进对话
+  const { useLicenseStore } = await import('../stores/license')
+  const license = useLicenseStore()
+  await license.refresh()
+  router.replace({ name: license.isActivated ? 'chat' : 'activate' })
 }
 
 async function onRegister(): Promise<void> {
   auth.updateApiBase(apiBase.value)
   await auth.register(username.value.trim(), password.value, username.value.trim())
   message.success('注册成功')
-  router.replace({ name: 'chat' })
+  const { useLicenseStore } = await import('../stores/license')
+  const license = useLicenseStore()
+  await license.refresh()
+  router.replace({ name: license.isActivated ? 'chat' : 'activate' })
 }
 </script>
 

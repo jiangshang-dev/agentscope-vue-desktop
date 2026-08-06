@@ -1,3 +1,9 @@
+/**
+ * 鉴权与 API 连接状态（Pinia）。
+ *
+ * 持久化：localStorage 存 token、user、apiBase；与 api/client 的 setAuthToken/setApiBase 同步。
+ * 协作：router 读 isAuthed；LoginView 调 login/register/checkHealth；ChatView 读 user/online。
+ */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import {
@@ -54,6 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     error.value = ''
     try {
+      // 登录前先应用用户在 LoginView 填写的 API 地址
       setApiBase(apiBase.value)
       const res = await apiLogin(username, password)
       token.value = res.access_token
@@ -94,6 +101,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     setAuthToken(null)
     persistUser(null)
+    // 会话数据在 chat store，由 ChatView 跳转 login 后不再挂载；token 清除即无法调 API
   }
 
   function updateApiBase(url: string): void {

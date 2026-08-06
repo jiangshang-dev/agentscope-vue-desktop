@@ -26,8 +26,27 @@
           :class="{ active: s.id === chat.currentSessionId }"
           @click="onOpenSession(s.id)"
         >
-          <div class="title">{{ s.title || '新对话' }}</div>
-          <div class="meta">{{ s.message_count }} 条</div>
+          <div class="session-main">
+            <div class="title">{{ s.title || '新对话' }}</div>
+            <div class="meta">{{ s.message_count }} 条</div>
+          </div>
+          <a-popconfirm
+            title="确定删除该对话？将同时清除数据库与 Redis 中的记录。"
+            ok-text="删除"
+            cancel-text="取消"
+            ok-type="danger"
+            @confirm="onDeleteSession(s.id)"
+          >
+            <a-button
+              type="text"
+              size="small"
+              class="del-btn"
+              danger
+              @click.stop
+            >
+              <template #icon><DeleteOutlined /></template>
+            </a-button>
+          </a-popconfirm>
         </div>
         <a-empty v-if="!chat.sessions.length" description="暂无会话" :image-style="{ height: '48px' }" />
       </div>
@@ -62,7 +81,7 @@
         </div>
 
         <div class="top-right">
-          <a-typography-text type="secondary" class="work-root" :title="chat.workRoot || '未选择'">
+          <a-typography-text type="secondary" class="work-root" :title="workRootHint">
             工作根：{{ shortWorkRoot }}
           </a-typography-text>
           <a-button size="small" @click="pickDir">选目录</a-button>
@@ -73,7 +92,7 @@
             size="small"
             type="primary"
             ghost
-            @click="stepsOpen = !stepsOpen"
+            @click="toggleStepsPanel"
           >
             步骤
           </a-button>
@@ -86,17 +105,29 @@
             <h2>有问题，尽管问</h2>
             <p>连接 AgentScope API · 流式对话 · Ant Design Vue</p>
           </div>
-          <ChatBubble v-for="m in chat.messages" :key="m.id" :message="m" />
+          <ChatBubble
+            v-for="m in chat.messages"
+            :key="m.id"
+            :message="m"
+            :active="stepsOpen && chat.activeMessageId === m.id"
+            @open-thinking="onOpenThinking"
+          />
         </div>
 
+        <!-- 思考步骤侧栏：数据来自 chat.steps，由 showStepsForMessage / handleSse 驱动 -->
         <aside
-          v-if="hasSteps"
+          v-if="panelVisible"
           class="steps"
           :class="{ 'steps-drawer': isCompact, open: stepsOpen || !isCompact }"
         >
           <div class="steps-head">
-            <div class="steps-title">执行步骤</div>
-            <a-button v-if="isCompact" type="text" size="small" @click="stepsOpen = false">✕</a-button>
+            <div class="steps-title-row">
+              <span class="steps-status-icon" :class="{ spin: stepsRunning }">
+                {{ stepsRunning ? '⟳' : '✓' }}
+              </span>
+              <div class="steps-title">{{ stepsPanelTitle }}</div>
+            </div>
+            <a-button type="text" size="small" class="steps-close" @click="closeStepsPanel">✕</a-button>
           </div>
           <a-timeline>
             <a-timeline-item
@@ -104,8 +135,22 @@
               :key="s.id"
               :color="s.status === 'error' ? 'red' : s.status === 'done' ? 'green' : 'blue'"
             >
-              <div class="step-title">{{ s.title }}</div>
-              <div class="step-detail" v-if="s.detail">{{ s.detail }}</div>
+              <div class="step-row">
+                <span
+                  class="step-status"
+                  :class="{
+                    done: s.status === 'done',
+                    error: s.status === 'error',
+                    running: s.status !== 'done' && s.status !== 'error',
+                  }"
+                >
+                  {{ s.status === 'error' ? '!' : s.status === 'done' ? '✓' : '⟳' }}
+                </span>
+                <div>
+                  <div class="step-title">{{ s.title }}</div>
+                  <div class="step-detail" v-if="s.detail">{{ s.detail }}</div>
+                </div>
+              </div>
             </a-timeline-item>
           </a-timeline>
         </aside>
@@ -122,8 +167,13 @@
 
       <footer class="composer">
         <div v-if="chat.attachments.length" class="attach-row">
-          <a-tag v-for="p in chat.attachments" :key="p" closable @close="chat.removeAttachment(p)">
-            {{ p.split('/').pop() }}
+          <a-tag
+            v-for="a in chat.attachments"
+            :key="a.path"
+            closable
+            @close="chat.removeAttachment(a.path)"
+          >
+            {{ a.name }}
           </a-tag>
         </div>
         <div class="composer-card">
@@ -151,10 +201,17 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 主聊天页：三栏布局（会话侧栏 / 消息区 / 思考步骤侧栏）。
+ *
+ * 协作：useChatStore（消息/SSE/步骤）、useAuthStore（用户/健康检查）、
+ * ChatBubble（单条渲染）、window.api（Electron 选目录/打开目录）。
+ * 响应式断点控制侧栏与步骤面板在窄屏下改为抽屉。
+ */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { MenuOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { MenuOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import ChatBubble from '../components/ChatBubble.vue'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
@@ -166,6 +223,7 @@ const draft = ref('')
 const scrollEl = ref<HTMLElement | null>(null)
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
 const sidebarOpen = ref(false)
+/** 思考步骤侧栏是否展开（窄屏为抽屉，宽屏为固定右栏） */
 const stepsOpen = ref(false)
 
 const isNarrow = computed(() => viewportWidth.value < 1100)
@@ -186,20 +244,79 @@ const scopeOptions = computed(() =>
       ],
 )
 
-const canSend = computed(() => !chat.busy && Boolean(draft.value.trim()))
-const hasSteps = computed(() => chat.steps.length > 0 || chat.busy)
-const showStepsToggle = computed(() => hasSteps.value && isCompact.value)
+const canSend = computed(
+  () => !chat.busy && (Boolean(draft.value.trim()) || chat.attachments.length > 0),
+)const hasSteps = computed(() => chat.steps.length > 0)
+const panelVisible = computed(() => stepsOpen.value && (hasSteps.value || chat.busy))
+const showStepsToggle = computed(() => (hasSteps.value || chat.busy) && isCompact.value)
+const stepsRunning = computed(() => {
+  if (chat.busy && chat.activeMessageId) {
+    const msg = chat.messages.find((m) => m.id === chat.activeMessageId)
+    if (msg?.streaming) return true
+  }
+  return chat.steps.some((s) => s.status !== 'done' && s.status !== 'error')
+})
+const stepsPanelTitle = computed(() => {
+  if (stepsRunning.value) {
+    const running = [...chat.steps].reverse().find((s) => s.status !== 'done' && s.status !== 'error')
+    return running?.title || chat.statusText || '思考中…'
+  }
+  return '已完成思考'
+})
 
 const shortWorkRoot = computed(() => {
-  const p = chat.workRoot || '未选择'
-  if (p.length <= 28 || !isCompact.value) return p
-  return `…${p.slice(-24)}`
+  if (chat.workRoot) {
+    const p = chat.workRoot
+    if (p.length <= 28 || !isCompact.value) return p
+    return `…${p.slice(-24)}`
+  }
+  if (chat.accessScope === 'full') return '未选择（默认主目录）'
+  if (chat.accessScope === 'restricted') return '未选择（请先选目录）'
+  return '沙箱 docs'
 })
+
+const workRootHint = computed(() => {
+  if (chat.workRoot) return chat.workRoot
+  if (chat.accessScope === 'full') {
+    return '未选择工作根时，完全访问默认使用用户主目录（含桌面）'
+  }
+  if (chat.accessScope === 'restricted') {
+    return '受限访问请先点「选目录」，否则只能操作空的 fallback 目录'
+  }
+  return '沙箱模式固定使用 workspace/docs'
+})
+
+function onOpenThinking(messageId: string): void {
+  // 再次点击同一条消息的「思考」pill → 收起侧栏
+  if (stepsOpen.value && chat.activeMessageId === messageId) {
+    closeStepsPanel()
+    return
+  }
+  chat.showStepsForMessage(messageId)
+  stepsOpen.value = true
+}
+
+function closeStepsPanel(): void {
+  stepsOpen.value = false
+  if (!chat.busy) chat.clearActiveSteps()
+}
+
+/** 顶栏「步骤」按钮：无选中消息时默认打开最后一条 assistant 的思考 */
+function toggleStepsPanel(): void {
+  if (stepsOpen.value) {
+    closeStepsPanel()
+    return
+  }
+  if (!chat.activeMessageId) {
+    const last = [...chat.messages].reverse().find((m) => m.role === 'assistant' && (m.steps?.length || m.streaming))
+    if (last) chat.showStepsForMessage(last.id)
+  }
+  stepsOpen.value = true
+}
 
 function onResize(): void {
   viewportWidth.value = window.innerWidth
   if (!isNarrow.value) sidebarOpen.value = false
-  if (!isCompact.value) stepsOpen.value = false
 }
 
 async function scrollBottom(): Promise<void> {
@@ -214,9 +331,13 @@ watch(
   },
 )
 
-watch(hasSteps, (v) => {
-  if (v && !isCompact.value) stepsOpen.value = true
-})
+watch(
+  () => chat.busy,
+  (busy) => {
+    // 开始流式输出时自动展开思考侧栏
+    if (busy && chat.activeMessageId) stepsOpen.value = true
+  },
+)
 
 onMounted(async () => {
   onResize()
@@ -240,7 +361,18 @@ async function onNewChat(): Promise<void> {
 
 async function onOpenSession(id: string): Promise<void> {
   await chat.openSession(id)
+  stepsOpen.value = false
   if (isNarrow.value) sidebarOpen.value = false
+}
+
+async function onDeleteSession(id: string): Promise<void> {
+  // 删除逻辑在 chat.removeSession：调 API、更新列表、若删当前会话则切到其它会话
+  try {
+    await chat.removeSession(id)
+    message.success('已删除对话')
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '删除失败')
+  }
 }
 
 function onLogout(): void {
@@ -361,10 +493,17 @@ async function onSend(): Promise<void> {
   min-height: 0;
 }
 .session-item {
-  padding: 10px 12px;
+  padding: 10px 8px 10px 12px;
   border-radius: 10px;
   cursor: pointer;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.session-main {
+  flex: 1;
+  min-width: 0;
 }
 .session-item:hover {
   background: #1c2330;
@@ -382,6 +521,17 @@ async function onSend(): Promise<void> {
   font-size: 11px;
   opacity: 0.7;
   margin-top: 2px;
+}
+.del-btn {
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+.session-item:hover .del-btn,
+.session-item.active .del-btn {
+  opacity: 1;
+}
+.session-item.active .del-btn {
+  color: #fff !important;
 }
 .side-footer {
   display: flex;
@@ -489,10 +639,67 @@ async function onSend(): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 12px;
+}
+.steps-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.steps-status-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  background: #2f8f6e;
+  color: #fff;
+  flex-shrink: 0;
+}
+.steps-status-icon.spin {
+  background: #3a6ea5;
+  animation: spin 1s linear infinite;
 }
 .steps-title {
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.steps-close {
+  color: #8b93a1 !important;
+  flex-shrink: 0;
+}
+.step-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.step-status {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  background: #3a6ea5;
+  color: #fff;
+}
+.step-status.done {
+  background: #2f8f6e;
+}
+.step-status.error {
+  background: #c45c5c;
+}
+.step-status.running {
+  animation: spin 1s linear infinite;
 }
 .step-title {
   font-size: 13px;
@@ -503,6 +710,15 @@ async function onSend(): Promise<void> {
   margin-top: 2px;
   word-break: break-word;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .confirm-bar {

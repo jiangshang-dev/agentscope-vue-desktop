@@ -1,3 +1,12 @@
+/**
+ * Electron 主进程入口。
+ *
+ * 职责：创建 BrowserWindow、加载渲染页（开发走 Vite URL，生产走打包 HTML）、
+ * 注册 IPC 供 preload 桥接（选目录/选文件/用系统打开路径）。
+ *
+ * 协作：preload/index.ts 通过 ipcRenderer.invoke 调用本文件注册的 handler；
+ * 渲染进程不直接访问 Node/Electron API。
+ */
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 
@@ -25,6 +34,7 @@ function createWindow(): void {
     mainWindow.show()
   })
 
+  // 页面内 target=_blank 等外链统一用系统浏览器打开，不在 Electron 内嵌
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -42,6 +52,7 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.agentscope.desktop')
   }
 
+  // --- IPC：供 ChatView 选择工作根目录、附件等 ---
   ipcMain.handle('dialog:selectDirectory', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],

@@ -1,3 +1,10 @@
+/**
+ * HTTP 与 SSE 客户端：封装 AgentScope REST API 与流式对话。
+ *
+ * - Axios 实例：鉴权头、baseURL（env + localStorage 覆盖）
+ * - streamChat / confirmChat：fetch + 手动解析 SSE（event/data 行）
+ * - 被 stores/auth、stores/chat 及 LoginView 直接调用
+ */
 import axios, { type AxiosInstance } from 'axios'
 import type {
   AuthUser,
@@ -43,6 +50,7 @@ export function createHttp(): AxiosInstance {
     baseURL: getBaseUrl(),
     timeout: 60000,
   })
+  // 每次请求刷新 baseURL 与 Bearer token（登录后 token 可能刚写入）
   http.interceptors.request.use((config) => {
     config.baseURL = getBaseUrl()
     const token = getToken()
@@ -89,6 +97,11 @@ export async function createSession(title = '新对话'): Promise<SessionOut> {
   return data
 }
 
+export async function deleteSession(sessionId: string): Promise<{ ok: boolean; session_id: string }> {
+  const { data } = await http.delete<{ ok: boolean; session_id: string }>(`/v1/sessions/${sessionId}`)
+  return data
+}
+
 export async function loadMessages(sessionId: string): Promise<MessageOut[]> {
   const { data } = await http.get<MessageOut[]>(`/v1/sessions/${sessionId}/messages`)
   return data
@@ -111,6 +124,10 @@ export async function uploadFile(file: File, sessionId?: string): Promise<{
 
 export type SseHandler = (event: string, data: Record<string, unknown>) => void
 
+/**
+ * 发起流式对话 POST /v1/chat/stream，按 SSE 规范逐块解析并回调 onEvent。
+ * event 常见值：session / step / delta / confirm / done / error（见 stores/chat handleSse）。
+ */
 export async function streamChat(
   body: ChatStreamBody,
   onEvent: SseHandler,
@@ -139,6 +156,7 @@ export async function streamChat(
   let eventName = 'message'
   let dataLines: string[] = []
 
+  // 空行表示一个 SSE 事件结束，合并多行 data: 后 JSON.parse
   const flush = (): void => {
     if (!dataLines.length) return
     const raw = dataLines.join('\n')
@@ -156,10 +174,11 @@ export async function streamChat(
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
+    // 保留未完整的一行在 buffer，避免跨 chunk 截断
     const parts = buffer.split(/\r?\n/)
     buffer = parts.pop() || ''
     for (const line of parts) {
-      if (line.startsWith(':')) continue
+      if (line.startsWith(':')) continue // SSE 注释行
       if (line.startsWith('event:')) {
         eventName = line.slice(6).trim()
       } else if (line.startsWith('data:')) {
@@ -172,6 +191,7 @@ export async function streamChat(
   if (dataLines.length) flush()
 }
 
+/** 用户确认/拒绝工具调用后继续流式输出；解析逻辑与 streamChat 相同 */
 export async function confirmChat(
   sessionId: string,
   accept: boolean,
@@ -192,7 +212,7 @@ export async function confirmChat(
   if (!res.ok || !res.body) {
     throw new Error(`确认失败 HTTP ${res.status}`)
   }
-  // reuse parser via streamChat-like loop
+  // 与 streamChat 相同的 SSE 行解析（未抽公共函数以避免改动行为）
   const reader = res.body.getReader()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''

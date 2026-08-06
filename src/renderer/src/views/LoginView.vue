@@ -46,6 +46,10 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 登录/注册页：配置 API 地址、检测健康、写入 auth store 后跳转 ChatView。
+ * 与 router（public 路由）、stores/auth、api/client 的 baseURL/token 持久化协作。
+ */
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -60,6 +64,7 @@ const username = ref('desktop')
 const password = ref('desktop123')
 
 async function onHealth(): Promise<void> {
+  // 仅探测连通性，不登录；结果展示在卡片底部 health tags
   auth.updateApiBase(apiBase.value)
   const ok = await auth.checkHealth()
   message[ok ? 'success' : 'error'](ok ? 'API 已连接' : auth.error || '连接失败')

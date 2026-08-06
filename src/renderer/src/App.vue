@@ -5,6 +5,10 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 应用根组件：Ant Design 深色主题 + 中文 locale，router-view 承载 Login/Chat 页面。
+ * 与 router/index.ts（路由守卫）、各 view 协作，本身不含业务状态。
+ */
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { theme, type ThemeConfig } from 'ant-design-vue'
 

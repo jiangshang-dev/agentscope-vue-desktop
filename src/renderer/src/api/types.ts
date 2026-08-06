@@ -59,6 +59,11 @@ export interface ChatMessage {
   content: string
   /** 流式输出中为 true，done/error 事件后置 false */
   streaming?: boolean
+  /**
+   * HITL：本轮已挂起，等待用户确认工具调用。
+   * 为 true 时不应再新建助手气泡，确认后续跑应复用本条。
+   */
+  awaitingConfirm?: boolean
   /** 该条助手消息对应的执行步骤（含历史回显与 SSE step 事件累积） */
   steps?: StepEvent[]
   /** 用户消息携带的附件（发送时写入，历史从 MessageOut.attachments 回显） */
@@ -97,5 +102,7 @@ export interface ChatStreamBody {
   work_root?: string | null
   access_scope?: AccessScope
   enable_rag?: boolean
+  /** 扫描 PDF 翻页多模态 OCR；较费 Token，默认建议关闭 */
+  enable_vision_ocr?: boolean
   attachment_paths?: string[]
 }

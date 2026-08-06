@@ -62,12 +62,16 @@ defineEmits<{
 
 const hasSteps = computed(() => (props.message.steps?.length || 0) > 0)
 const isRunning = computed(() => Boolean(props.message.streaming))
-/** 有历史步骤或仍在流式时展示思考入口 */
+const isAwaitingConfirm = computed(() => Boolean(props.message.awaitingConfirm))
+/** 有历史步骤或仍在流式 / 等待确认时展示思考入口 */
 const showThinking = computed(
-  () => props.message.role === 'assistant' && (hasSteps.value || isRunning.value),
+  () =>
+    props.message.role === 'assistant' &&
+    (hasSteps.value || isRunning.value || isAwaitingConfirm.value),
 )
 
 const thinkLabel = computed(() => {
+  if (isAwaitingConfirm.value) return '等待确认工具…'
   if (isRunning.value) {
     const steps = props.message.steps || []
     const running = [...steps].reverse().find((s) => s.status !== 'done' && s.status !== 'error')
@@ -79,7 +83,9 @@ const thinkLabel = computed(() => {
 
 const displayText = computed(() => {
   if (!props.message.content) {
-    return props.message.streaming ? '' : '（无回复）'
+    if (props.message.streaming) return ''
+    if (props.message.awaitingConfirm) return '需要确认工具调用后继续…'
+    return '（无回复）'
   }
   return props.message.content
 })
@@ -87,6 +93,9 @@ const displayText = computed(() => {
 const html = computed(() => {
   if (!props.message.content) {
     if (props.message.streaming) return ''
+    if (props.message.awaitingConfirm) {
+      return renderMarkdown('*需要确认工具调用后继续…*')
+    }
     return renderMarkdown('（无回复）')
   }
   return renderMarkdown(props.message.content)

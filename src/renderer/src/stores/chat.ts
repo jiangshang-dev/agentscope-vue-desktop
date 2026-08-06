@@ -93,6 +93,8 @@ export const useChatStore = defineStore('chat', () => {
   const workRoot = ref('')
   const accessScope = ref<AccessScope>('sandbox')
   const enableRag = ref(true)
+  /** 扫描 PDF 多模态识读；默认关，避免无谓烧 Token */
+  const enableVisionOcr = ref(false)
   /** 输入区待发送附件（发送后挂到用户气泡并清空） */
   const attachments = ref<ChatAttachment[]>([])
   const busy = ref(false)
@@ -245,6 +247,8 @@ export const useChatStore = defineStore('chat', () => {
       if (msg) msg.content += data.text
     } else if (event === 'confirm') {
       pendingConfirm.value = data as ConfirmPayload
+      const msg = messages.value.find((m) => m.id === assistantId)
+      if (msg) msg.awaitingConfirm = true
     } else if (event === 'done') {
       const msg = messages.value.find((m) => m.id === assistantId)
       if (msg) {
@@ -252,6 +256,13 @@ export const useChatStore = defineStore('chat', () => {
           msg.content = data.full_text
         }
         msg.streaming = false
+        const pending = Boolean(data.pending_confirm)
+        msg.awaitingConfirm = pending
+        if (pending) {
+          pendingConfirm.value = pendingConfirm.value || ({ message: '需要确认工具调用' } as ConfirmPayload)
+        } else {
+          pendingConfirm.value = null
+        }
         const fromServer = normalizeSteps(data.steps)
         if (fromServer.length) {
           msg.steps = markStepsDone(fromServer)
@@ -314,6 +325,7 @@ export const useChatStore = defineStore('chat', () => {
           work_root: workRoot.value || null,
           access_scope: accessScope.value,
           enable_rag: enableRag.value,
+          enable_vision_ocr: enableVisionOcr.value,
           attachment_paths: pendingAtts.map((a) => a.path),
         },
         (event, data) => handleSse(event, data, assistantId),
@@ -332,21 +344,36 @@ export const useChatStore = defineStore('chat', () => {
       busy.value = false
       abort = null
       const msg = messages.value.find((m) => m.id === assistantId)
-      if (msg) msg.streaming = false
+      // HITL 挂起时保持 awaitingConfirm，勿当成「已完成的空回复」
+      if (msg && !msg.awaitingConfirm) msg.streaming = false
       statusText.value = ''
     }
   }
 
   async function answerConfirm(accept: boolean): Promise<void> {
     if (!currentSessionId.value || busy.value) return
-    const assistantId = uid()
-    messages.value.push({
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      streaming: true,
-      steps: [...steps.value],
-    })
+
+    // 复用「等待确认」的那条助手消息，避免多出一条空的「（无回复）」
+    const existing = [...messages.value]
+      .reverse()
+      .find((m) => m.role === 'assistant' && m.awaitingConfirm)
+    const assistantId = existing?.id || uid()
+    if (existing) {
+      existing.streaming = true
+      existing.awaitingConfirm = false
+      if (!existing.steps?.length && steps.value.length) {
+        existing.steps = [...steps.value]
+      }
+    } else {
+      messages.value.push({
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        streaming: true,
+        steps: [...steps.value],
+      })
+    }
+
     busy.value = true
     activeMessageId.value = assistantId
     pendingConfirm.value = null
@@ -365,20 +392,22 @@ export const useChatStore = defineStore('chat', () => {
       busy.value = false
       abort = null
       const msg = messages.value.find((m) => m.id === assistantId)
-      if (msg) msg.streaming = false
+      if (msg && !msg.awaitingConfirm) msg.streaming = false
     }
   }
 
   async function uploadLocalFile(file: File): Promise<void> {
     const res = await uploadFile(file, currentSessionId.value || undefined)
     if (!res.relative_path) return
+    const displayName = (res.filename || file.name || '').trim() || fileBasename(res.relative_path)
     const previewUrl =
-      isImageName(file.name) || (file.type || '').startsWith('image/')
+      isImageName(displayName) || (file.type || '').startsWith('image/')
         ? URL.createObjectURL(file)
         : undefined
-    attachments.value.push(
-      toAttachment(res.relative_path, res.filename || file.name, previewUrl),
-    )
+    attachments.value = [
+      ...attachments.value,
+      toAttachment(res.relative_path, displayName, previewUrl),
+    ]
   }
 
   function removeAttachment(path: string): void {
@@ -397,6 +426,7 @@ export const useChatStore = defineStore('chat', () => {
     workRoot,
     accessScope,
     enableRag,
+    enableVisionOcr,
     attachments,
     busy,
     statusText,

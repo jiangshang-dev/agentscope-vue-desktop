@@ -52,12 +52,26 @@
       </div>
 
       <div class="side-footer">
-        <a-switch
-          v-model:checked="chat.enableRag"
-          checked-children="RAG"
-          un-checked-children="RAG"
-          size="small"
-        />
+        <div class="footer-toggles">
+          <a-tooltip title="知识库向量检索">
+            <a-switch
+              v-model:checked="chat.enableRag"
+              checked-children="RAG"
+              un-checked-children="RAG"
+              size="small"
+            />
+          </a-tooltip>
+          <a-tooltip
+            title="开启后：扫描版 PDF 会按页调用视觉模型 OCR（默认最多 8 页），较费 Token；文字版 PDF 会自动跳过。图片附件仍始终识图。"
+          >
+            <a-switch
+              v-model:checked="chat.enableVisionOcr"
+              checked-children="扫描件"
+              un-checked-children="扫描件"
+              size="small"
+            />
+          </a-tooltip>
+        </div>
         <a-button type="text" danger @click="onLogout">退出登录</a-button>
       </div>
     </aside>
@@ -167,14 +181,14 @@
 
       <footer class="composer">
         <div v-if="chat.attachments.length" class="attach-row">
-          <a-tag
-            v-for="a in chat.attachments"
-            :key="a.path"
-            closable
-            @close="chat.removeAttachment(a.path)"
-          >
-            {{ a.name }}
-          </a-tag>
+          <div v-for="a in chat.attachments" :key="a.path" class="attach-chip">
+            <img v-if="a.previewUrl" class="attach-chip-thumb" :src="a.previewUrl" :alt="a.name" />
+            <span v-else class="attach-chip-icon">📄</span>
+            <span class="attach-chip-name" :title="a.name || a.path">{{ a.name || fileLabel(a.path) }}</span>
+            <button type="button" class="attach-chip-close" @click="chat.removeAttachment(a.path)">
+              ✕
+            </button>
+          </div>
         </div>
         <div class="composer-card">
           <a-textarea
@@ -246,7 +260,8 @@ const scopeOptions = computed(() =>
 
 const canSend = computed(
   () => !chat.busy && (Boolean(draft.value.trim()) || chat.attachments.length > 0),
-)const hasSteps = computed(() => chat.steps.length > 0)
+)
+const hasSteps = computed(() => chat.steps.length > 0)
 const panelVisible = computed(() => stepsOpen.value && (hasSteps.value || chat.busy))
 const showStepsToggle = computed(() => (hasSteps.value || chat.busy) && isCompact.value)
 const stepsRunning = computed(() => {
@@ -312,6 +327,11 @@ function toggleStepsPanel(): void {
     if (last) chat.showStepsForMessage(last.id)
   }
   stepsOpen.value = true
+}
+
+function fileLabel(path: string): string {
+  const parts = (path || '').replace(/\\/g, '/').split('/')
+  return parts[parts.length - 1] || path || '附件'
 }
 
 function onResize(): void {
@@ -540,6 +560,12 @@ async function onSend(): Promise<void> {
   gap: 8px;
   flex-wrap: wrap;
 }
+.footer-toggles {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 
 .main {
   display: grid;
@@ -747,7 +773,50 @@ async function onSend(): Promise<void> {
   margin-bottom: 8px;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+}
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(360px, 90vw);
+  padding: 6px 8px 6px 10px;
+  border-radius: 10px;
+  border: 1px solid #3a4454;
+  background: #1c2330;
+  color: #e8eaed;
+  font-size: 12px;
+}
+.attach-chip-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.attach-chip-icon {
+  flex-shrink: 0;
+  line-height: 1;
+}
+.attach-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e8eaed;
+}
+.attach-chip-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: #8b93a1;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 1;
+}
+.attach-chip-close:hover {
+  color: #e8eaed;
 }
 .composer-card {
   display: grid;

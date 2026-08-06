@@ -9,15 +9,24 @@
         </div>
       </div>
 
-      <a-form layout="vertical" @finish="onSubmit">
+      <!-- 必须 :model，否则 name+rules 校验读不到 v-model，点登录会「无反应」 -->
+      <a-form layout="vertical" :model="form" @finish="onSubmit">
         <a-form-item label="API 地址">
-          <a-input v-model:value="apiBase" :placeholder="envApiBase" />
+          <a-input v-model:value="form.apiBase" :placeholder="envApiBase" />
         </a-form-item>
-        <a-form-item label="用户名" name="username" :rules="[{ required: true, message: '请输入用户名' }]">
-          <a-input v-model:value="username" autocomplete="username" />
+        <a-form-item
+          label="用户名"
+          name="username"
+          :rules="[{ required: true, whitespace: true, message: '请输入用户名' }]"
+        >
+          <a-input v-model:value="form.username" autocomplete="username" />
         </a-form-item>
-        <a-form-item label="密码" name="password" :rules="[{ required: true, message: '请输入密码' }]">
-          <a-input-password v-model:value="password" autocomplete="current-password" />
+        <a-form-item
+          label="密码"
+          name="password"
+          :rules="[{ required: true, message: '请输入密码' }]"
+        >
+          <a-input-password v-model:value="form.password" autocomplete="current-password" />
         </a-form-item>
 
         <a-alert
@@ -47,48 +56,59 @@
 
 <script setup lang="ts">
 /**
- * 登录/注册页：配置 API 地址、检测健康、写入 auth store 后跳转 ChatView。
- * 与 router（public 路由）、stores/auth、api/client 的 baseURL/token 持久化协作。
+ * 登录/注册页：配置 API 地址、检测健康、写入 auth store 后跳转。
+ * 与 router、stores/auth、stores/license、api/client 协作。
  */
-import { ref } from 'vue'
+import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useAuthStore } from '../stores/auth'
+import { useLicenseStore } from '../stores/license'
 import { getEnvApiBase } from '../api/client'
 
 const auth = useAuthStore()
+const license = useLicenseStore()
 const router = useRouter()
 const envApiBase = getEnvApiBase()
-const apiBase = ref(auth.apiBase || envApiBase)
-const username = ref('desktop')
-const password = ref('desktop123')
+
+const form = reactive({
+  apiBase: auth.apiBase || envApiBase,
+  username: 'desktop',
+  password: 'desktop123',
+})
+
+async function goAfterAuth(): Promise<void> {
+  await license.refresh()
+  router.replace({ name: license.isActivated ? 'chat' : 'activate' })
+}
 
 async function onHealth(): Promise<void> {
-  // 仅探测连通性，不登录；结果展示在卡片底部 health tags
-  auth.updateApiBase(apiBase.value)
+  auth.updateApiBase(form.apiBase)
   const ok = await auth.checkHealth()
   message[ok ? 'success' : 'error'](ok ? 'API 已连接' : auth.error || '连接失败')
 }
 
 async function onSubmit(): Promise<void> {
-  auth.updateApiBase(apiBase.value)
-  await auth.login(username.value.trim(), password.value)
-  message.success('登录成功')
-  // 未激活则先去激活页，再进对话
-  const { useLicenseStore } = await import('../stores/license')
-  const license = useLicenseStore()
-  await license.refresh()
-  router.replace({ name: license.isActivated ? 'chat' : 'activate' })
+  try {
+    auth.updateApiBase(form.apiBase)
+    await auth.login(form.username.trim(), form.password)
+    message.success('登录成功')
+    await goAfterAuth()
+  } catch {
+    // auth.error 已写入 store，页面上会显示
+  }
 }
 
 async function onRegister(): Promise<void> {
-  auth.updateApiBase(apiBase.value)
-  await auth.register(username.value.trim(), password.value, username.value.trim())
-  message.success('注册成功')
-  const { useLicenseStore } = await import('../stores/license')
-  const license = useLicenseStore()
-  await license.refresh()
-  router.replace({ name: license.isActivated ? 'chat' : 'activate' })
+  try {
+    auth.updateApiBase(form.apiBase)
+    const name = form.username.trim()
+    await auth.register(name, form.password, name)
+    message.success('注册成功')
+    await goAfterAuth()
+  } catch {
+    // auth.error 已写入 store
+  }
 }
 </script>
 

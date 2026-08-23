@@ -5,6 +5,12 @@ Electron + Vue 3 + TypeScript + Ant Design Vue 客户端，对接 agentscope-api
 后端服务：
 ![后端服务](https://github.com/jiangshang-dev/agentscope-agent-service)
 
+## 界面截图
+<img width="1280" height="820" alt="image" src="https://github.com/user-attachments/assets/b6e600e7-ca15-47e2-b2c0-1910b89cdbce" />
+<img width="1280" height="820" alt="image" src="https://github.com/user-attachments/assets/af7a8b12-c18f-4a1b-bbfb-cb1c4dbc71a4" />
+<img width="1400" height="825" alt="image" src="https://github.com/user-attachments/assets/782cafae-24b7-439c-b95e-f176f796a87f" />
+
+
 ## 环境变量
 
 开发环境接口地址统一写在 **`.env.development`**：

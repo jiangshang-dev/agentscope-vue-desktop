@@ -2,6 +2,9 @@
 
 Electron + Vue 3 + TypeScript + Ant Design Vue 客户端，对接 agentscope-api。
 
+后端服务：
+![后端服务](https://github.com/jiangshang-dev/agentscope-agent-service)
+
 ## 环境变量
 
 开发环境接口地址统一写在 **`.env.development`**：
